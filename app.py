@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 import sys
 import os
 
@@ -13,6 +14,16 @@ except ImportError as e:
     sys.exit(1)
 
 app = Flask(__name__)
+
+# Configure CORS to allow requests from any origin
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+        "supports_credentials": True
+    }
+})
 
 
 @app.route('/')
