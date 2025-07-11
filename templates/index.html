@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="search-section">
+    <form id="recommendForm">
+        <div class="form-group">
+            <label for="movieName">🎭 Enter Movie Title:</label>
+            <input 
+                type="text" 
+                id="movieName" 
+                name="movie_name" 
+                placeholder="e.g., The Dark Knight, Inception, Titanic..."
+                required
+            >
+        </div>
+        <button type="submit" id="submitBtn">
+            🔍 Get Recommendations
+        </button>
+    </form>
+</div>
+
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>Finding similar movies...</p>
+</div>
+
+<div class="results" id="results"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('recommendForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const movieName = document.getElementById('movieName').value.trim();
+        if (!movieName) {
+            showError('Please enter a movie name');
+            return;
+        }
+        
+        showLoading(true);
+        hideResults();
+        
+        try {
+            const response = await fetch('/recommend', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ movie_name: movieName })
+            });
+            
+            const data = await response.json();
+            showLoading(false);
+            
+            if (response.ok) {
+                if (data.recommendations && data.recommendations.length > 0) {
+                    showRecommendations(data);
+                } else {
+                    showError('No recommendations found for this movie. Please try a different title.');
+                }
+            } else {
+                showError(data.error || 'An error occurred while getting recommendations');
+            }
+        } catch (error) {
+            showLoading(false);
+            showError('Network error. Please check your connection and try again.');
+            console.error('Error:', error);
+        }
+    });
+    
+    function showLoading(show) {
+        document.getElementById('loading').style.display = show ? 'block' : 'none';
+        document.getElementById('submitBtn').disabled = show;
+    }
+    
+    function hideResults() {
+        document.getElementById('results').style.display = 'none';
+    }
+    
+    function showRecommendations(data) {
+        const resultsDiv = document.getElementById('results');
+        
+        let html = `
+            <div class="success">
+                ✅ Found ${data.recommendations.length} recommendations for "${data.movie_title}"
+                ${data.used_closest_match ? ` (Using closest match: "${data.closest_match}")` : ''}
+            </div>
+            <h3>🎬 Top Recommendations:</h3>
+        `;
+        
+        data.recommendations.forEach((movie, index) => {
+            html += `
+                <div class="movie-card">
+                    <span class="movie-number">${index + 1}.</span>
+                    <strong>${movie}</strong>
+                </div>
+            `;
+        });
+        
+        // Add search again button
+        html += `
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="clearSearch()" style="background: #28a745; width: auto; padding: 10px 20px;">
+                    🔄 Search Another Movie
+                </button>
+            </div>
+        `;
+        
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+    }
+    
+    function showError(message) {
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = `<div class="error">❌ ${message}</div>`;
+        resultsDiv.style.display = 'block';
+    }
+    
+    function fillMovie(movieName) {
+        document.getElementById('movieName').value = movieName;
+    }
+    
+    function clearSearch() {
+        document.getElementById('movieName').value = '';
+        hideResults();
+    }
+
+    // Auto-complete functionality
+    let timeoutId;
+    document.getElementById('movieName').addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        
+        clearTimeout(timeoutId);
+        
+        if (query.length > 2) {
+            timeoutId = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.matches.length > 0) {
+                        showSuggestions(data.matches.slice(0, 5));
+                    } else {
+                        hideSuggestions();
+                    }
+                } catch (error) {
+                    console.error('Search error:', error);
+                }
+            }, 300);
+        } else {
+            hideSuggestions();
+        }
+    });
+    
+    function showSuggestions(matches) {
+        let existingSuggestions = document.getElementById('suggestions');
+        if (existingSuggestions) {
+            existingSuggestions.remove();
+        }
+        
+        const suggestionDiv = document.createElement('div');
+        suggestionDiv.id = 'suggestions';
+        suggestionDiv.style.cssText = `
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            width: 100%;
+            margin-top: 5px;
+        `;
+        
+        matches.forEach(match => {
+            const item = document.createElement('div');
+            item.style.cssText = `
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #eee;
+            `;
+            item.textContent = match;
+            item.addEventListener('mouseover', () => {
+                item.style.backgroundColor = '#f8f9fa';
+            });
+            item.addEventListener('mouseout', () => {
+                item.style.backgroundColor = 'white';
+            });
+            item.addEventListener('click', () => {
+                document.getElementById('movieName').value = match;
+                hideSuggestions();
+            });
+            suggestionDiv.appendChild(item);
+        });
+        
+        const movieInput = document.getElementById('movieName');
+        movieInput.parentNode.style.position = 'relative';
+        movieInput.parentNode.appendChild(suggestionDiv);
+    }
+    
+    function hideSuggestions() {
+        const suggestions = document.getElementById('suggestions');
+        if (suggestions) {
+            suggestions.remove();
+        }
+    }
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#movieName') && !e.target.closest('#suggestions')) {
+            hideSuggestions();
+        }
+    });
+</script>
+{% endblock %}
